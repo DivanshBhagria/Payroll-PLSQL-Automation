@@ -1,0 +1,3 @@
+CREATE TABLE emp (
+  emp_id NUMBER PRIMARY KEY
+);
