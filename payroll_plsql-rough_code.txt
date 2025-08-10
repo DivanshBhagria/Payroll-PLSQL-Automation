@@ -1,0 +1,90 @@
+CREATE OR REPLACE PROCEDURE update_leaves_and_salary_cut(
+    p_num_leaves IN NUMBER,
+    p_emp_id IN NUMBER
+) AS
+    allowed_leave_balance NUMBER;
+    current_taken_leaves NUMBER;
+    salary_cut_increment NUMBER;
+    leave_id NUMBER;
+BEGIN
+    -- Get the allowed leaves and current taken leaves for the employee
+    SELECT d.allowed_leaves, NVL(l.taken_leaves, 0)
+    INTO allowed_leave_balance, current_taken_leaves
+    FROM dept d
+    LEFT JOIN leaves l ON d.emp_id = l.emp_id
+    WHERE d.emp_id = p_emp_id;
+
+    -- Check if the number of leaves taken exceeds the allowed leaves
+    IF p_num_leaves <= allowed_leave_balance THEN
+        update_leaves(p_num_leaves, p_emp_id);
+		update dept set allowed_leaves=allowed_leaves-p_num_leaves;   -- *************************
+    ELSE
+        -- Calculate the additional leaves taken beyond the allowed limit
+        DECLARE
+            extra_leaves NUMBER := p_num_leaves - allowed_leave_balance;
+        BEGIN
+            -- Increment salary_cut in the salary table for each extra leave
+            salary_cut_increment := extra_leaves * 100; -- Define a constant or configurable parameter
+            UPDATE salary
+            SET salary_cut = salary_cut + salary_cut_increment
+            WHERE emp_id = p_emp_id;
+
+            update_leaves(p_num_leaves, p_emp_id);
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                DBMS_OUTPUT.PUT_LINE('Employee not found.');
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Error updating salary_cut: ' || SQLERRM);
+        END;
+    END IF;
+
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Leaves updated successfully.');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END update_leaves_and_salary_cut;
+
+-- Extracted procedure to handle leaves update
+CREATE OR REPLACE PROCEDURE update_leaves(
+    p_num_leaves IN NUMBER,
+    p_emp_id IN NUMBER
+) AS
+BEGIN
+    
+        UPDATE leaves
+        SET taken_leaves = p_num_leaves+taken_leaves
+        WHERE emp_id = p_emp_id;
+
+END update_leaves;
+
+-- Helper function to check if leaves exist for an employee
+CREATE OR REPLACE FUNCTION exists_leaves(p_emp_id IN NUMBER) RETURN BOOLEAN IS
+    v_exists NUMBER;
+BEGIN
+    SELECT COUNT(*)
+    INTO v_exists
+    FROM leaves
+    WHERE emp_id = p_emp_id;
+
+    RETURN v_exists > 0;
+END exists_leaves;
+
+drop table dept
+    
+
+create table salary(salary_id number,base_salary number,salary_cut number,emp_id number);
+create table emp(emp_id number primary key);
+create table leaves(leave_id number primary key,taken_leaves number,emp_id number);
+create table dept(dept_id number primary key,dept_name varchar(20),base_salary number,allowed_leaves number,emp_id number);
+
+insert into emp values(101);
+insert into salary values(1,10000,0,101);
+insert into leaves values(1,0,101);
+insert into dept values(1,'IT',10000,3,101);
+
+select * from leaves;
+select * from salary;
+begin
+update_leaves_and_salary_cut(2,101);
+end;
